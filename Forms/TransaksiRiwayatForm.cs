@@ -1,58 +1,59 @@
-﻿// FILE: Forms/TransaksiRiwayatForm.cs (Code Final)
+﻿// FILE: Forms/TransaksiRiwayatForm.cs
 
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Windows.Forms;
 using AplikasiPemesananBus_UAS.Models;
-using AplikasiPemesananBus_UAS.Services;
+using AplikasiPemesananBus_UAS.ServiceOrm;
+using AplikasiPemesananBus_UAS.Data;
 using System.Globalization;
 
 namespace AplikasiPemesananBus_UAS.Forms
 {
     public partial class TransaksiRiwayatForm : Form
     {
-        private PemesananService pemesananService = new PemesananService();
+        private readonly PemesananService _pemesananService;
 
         public TransaksiRiwayatForm()
         {
             InitializeComponent();
 
-            // Hubungkan event click secara manual untuk memastikan
-            if (btnTampilkan != null)
+            var context = new AppDbContext();
+            _pemesananService = new PemesananService(context);
+
+            // Pengaturan Event Handler (sesuai nama komponen Anda: btnTampilkan, btnKeluar)
+            if (btnTampilkan != null)
                 this.btnTampilkan.Click += new System.EventHandler(this.btnTampilkan_Click);
             if (btnKeluar != null)
                 this.btnKeluar.Click += new System.EventHandler(this.btnKeluar_Click);
 
-            // Tambahkan event Load jika belum ada di designer
             this.Load += new System.EventHandler(this.TransaksiRiwayatForm_Load);
         }
 
         private void TransaksiRiwayatForm_Load(object? sender, EventArgs e)
         {
-            // Set default filter: 1 bulan terakhir
-            if (dtpDariTanggal != null && dtpSampaiTanggal != null)
+            // dtpDariTanggal dan dtpSampaiTanggal
+            if (dtpDariTanggal != null && dtpSampaiTanggal != null)
             {
-                dtpDariTanggal.Value = DateTime.Now.AddDays(-30);
-                dtpSampaiTanggal.Value = DateTime.Now;
+                dtpDariTanggal.Value = DateTime.Now.Date.AddDays(-30);
+                dtpSampaiTanggal.Value = DateTime.Now.Date;
             }
             TampilkanLaporan();
         }
 
         private void TampilkanLaporan()
         {
-            // KRITIS: Null-Check ketat untuk mencegah NullReferenceException
             if (dtpDariTanggal == null || dtpSampaiTanggal == null || dgvLaporanTransaksi == null || lblTotalTransaksi == null)
             {
                 MessageBox.Show("Komponen Form (DTP/DGV/Label) belum siap. Cek Designer.cs.", "Error Form", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 return;
             }
 
-            DateTime tglMulai = dtpDariTanggal.Value.Date;
-            // Mencakup hingga detik terakhir hari yang dipilih
-            DateTime tglAkhir = dtpSampaiTanggal.Value.Date.AddDays(1).AddSeconds(-1);
+            DateTime tglMulaiLocal = dtpDariTanggal.Value.Date;
+            DateTime tglAkhirLocal = dtpSampaiTanggal.Value.Date;
 
-            if (tglMulai > tglAkhir)
+            if (tglMulaiLocal > tglAkhirLocal)
             {
                 MessageBox.Show("Tanggal Mulai tidak boleh lebih besar dari Tanggal Akhir.", "Validasi Tanggal", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
@@ -60,35 +61,85 @@ namespace AplikasiPemesananBus_UAS.Forms
 
             try
             {
-                List<PemesananModel> laporan = pemesananService.GetLaporanByTanggal(tglMulai, tglAkhir);
+                // ** PERBAIKAN KRITIS UTC **
+                DateTime tglMulaiUtc = tglMulaiLocal.ToUniversalTime();
+                DateTime tglAkhirMaxLocal = tglAkhirLocal.AddDays(1).AddSeconds(-1);
+                DateTime tglAkhirUtc = tglAkhirMaxLocal.ToUniversalTime();
+
+                List<PemesananModel> laporan = _pemesananService.GetLaporanByTanggal(tglMulaiUtc, tglAkhirUtc);
 
                 dgvLaporanTransaksi.DataSource = laporan;
 
-                // Hitung dan tampilkan total
-                decimal totalBayarSemua = laporan.Sum(p => p.TotalBayar);
+                // Hitung dan Tampilkan Total (lblTotalTransaksi)
+                decimal totalBayarSemua = laporan.Sum(p => p.TotalBayar);
                 lblTotalTransaksi.Text = $"Total Penerimaan: Rp. {totalBayarSemua.ToString("N0", CultureInfo.GetCultureInfo("id-ID"))}";
 
-                // Pengaturan DGV
-                if (dgvLaporanTransaksi.Columns.Count > 0)
+                // Pengaturan Kolom DataGridView
+                if (dgvLaporanTransaksi.Columns.Count > 0)
                 {
-                    // Sembunyikan kolom ID dan kolom dasar yang tidak perlu
-                    dgvLaporanTransaksi.Columns["PemesananID"].Visible = false;
-                    dgvLaporanTransaksi.Columns["PenumpangID"].Visible = false;
-                    dgvLaporanTransaksi.Columns["BusID"].Visible = false;
-                    dgvLaporanTransaksi.Columns["TarifDasar"].Visible = false;
-                    dgvLaporanTransaksi.Columns["Retribusi"].Visible = false;
+                    // Sembunyikan semua kolom yang tidak perlu
+                    foreach (DataGridViewColumn col in dgvLaporanTransaksi.Columns)
+                    {
+                        col.Visible = false;
+                    }
 
-                    // Format Tampilan
-                    dgvLaporanTransaksi.Columns["TanggalPemesanan"].DefaultCellStyle.Format = "dd MMMM yyyy";
-                    dgvLaporanTransaksi.Columns["TotalBayar"].DefaultCellStyle.Format = "N0";
-                    dgvLaporanTransaksi.Columns["TotalBayar"].DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleRight;
+                    // Tampilkan dan atur kolom yang dibutuhkan
+                    if (dgvLaporanTransaksi.Columns.Contains("ID"))
+                    {
+                        dgvLaporanTransaksi.Columns["ID"].Visible = true;
+                        dgvLaporanTransaksi.Columns["ID"].HeaderText = "PK ID";
+                        dgvLaporanTransaksi.Columns["ID"].Width = 50;
+                    }
+
+                    if (dgvLaporanTransaksi.Columns.Contains("TanggalPemesanan"))
+                    {
+                        dgvLaporanTransaksi.Columns["TanggalPemesanan"].Visible = true;
+                        dgvLaporanTransaksi.Columns["TanggalPemesanan"].HeaderText = "Tgl Transaksi";
+                        dgvLaporanTransaksi.Columns["TanggalPemesanan"].DefaultCellStyle.Format = "dd MMMM yyyy";
+                    }
+
+                    if (dgvLaporanTransaksi.Columns.Contains("NamaPenumpang"))
+                    {
+                        dgvLaporanTransaksi.Columns["NamaPenumpang"].Visible = true;
+                        dgvLaporanTransaksi.Columns["NamaPenumpang"].HeaderText = "Penumpang";
+                    }
+
+                    if (dgvLaporanTransaksi.Columns.Contains("NamaBus"))
+                    {
+                        dgvLaporanTransaksi.Columns["NamaBus"].Visible = true;
+                        dgvLaporanTransaksi.Columns["NamaBus"].HeaderText = "Bus";
+                    }
+
+                    if (dgvLaporanTransaksi.Columns.Contains("JumlahTiket"))
+                    {
+                        dgvLaporanTransaksi.Columns["JumlahTiket"].Visible = true;
+                        dgvLaporanTransaksi.Columns["JumlahTiket"].HeaderText = "Jml Tiket";
+                        dgvLaporanTransaksi.Columns["JumlahTiket"].DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleCenter;
+                    }
+
+                    if (dgvLaporanTransaksi.Columns.Contains("TotalBayar"))
+                    {
+                        dgvLaporanTransaksi.Columns["TotalBayar"].Visible = true;
+                        dgvLaporanTransaksi.Columns["TotalBayar"].HeaderText = "Total Bayar";
+                        dgvLaporanTransaksi.Columns["TotalBayar"].DefaultCellStyle.Format = "N0";
+                        dgvLaporanTransaksi.Columns["TotalBayar"].DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleRight;
+                    }
+
+                    // Sembunyikan Foreign Key dan Model Navigation
+                    if (dgvLaporanTransaksi.Columns.Contains("PemesananID")) dgvLaporanTransaksi.Columns["PemesananID"].Visible = false;
+                    if (dgvLaporanTransaksi.Columns.Contains("PenumpangID")) dgvLaporanTransaksi.Columns["PenumpangID"].Visible = false;
+                    if (dgvLaporanTransaksi.Columns.Contains("BusID")) dgvLaporanTransaksi.Columns["BusID"].Visible = false;
+                    if (dgvLaporanTransaksi.Columns.Contains("TarifDasar")) dgvLaporanTransaksi.Columns["TarifDasar"].Visible = false;
+                    if (dgvLaporanTransaksi.Columns.Contains("Retribusi")) dgvLaporanTransaksi.Columns["Retribusi"].Visible = false;
+                    if (dgvLaporanTransaksi.Columns.Contains("PenumpangModel")) dgvLaporanTransaksi.Columns["PenumpangModel"].Visible = false;
+                    if (dgvLaporanTransaksi.Columns.Contains("BusModel")) dgvLaporanTransaksi.Columns["BusModel"].Visible = false;
+
 
                     dgvLaporanTransaksi.AutoResizeColumns(DataGridViewAutoSizeColumnsMode.AllCells);
                 }
             }
             catch (Exception ex)
             {
-                // Ini akan menangani error yang datang dari Service (koneksi/SQL)
                 MessageBox.Show($"Error Form Laporan: {ex.Message}", "Kesalahan Aplikasi", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }

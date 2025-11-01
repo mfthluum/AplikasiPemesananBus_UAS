@@ -1,186 +1,192 @@
-﻿// FILE: Forms/InputPenumpangForm.cs (Koreksi Lengkap)
+﻿// FILE: Forms/InputPenumpangForm.cs
 
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Windows.Forms;
 using AplikasiPemesananBus_UAS.Models;
-using AplikasiPemesananBus_UAS.Services;
+using AplikasiPemesananBus_UAS.ServiceOrm; // PENTING: Menggunakan Service ORM
+using AplikasiPemesananBus_UAS.Data;
+using System.Globalization;
 
 namespace AplikasiPemesananBus_UAS.Forms
 {
     public partial class InputPenumpangForm : Form
     {
-        private PenumpangService service = new PenumpangService();
-        private int selectedPenumpangId = 0;
+        // Variabel untuk menyimpan ID yang sedang diedit
+        private int IDPenumpangDipilih = 0;
+
+        // Ganti deklarasi Service
+        private readonly PenumpangService _penumpangService;
 
         public InputPenumpangForm()
         {
             InitializeComponent();
 
-            // Panggil LoadData saat form pertama kali dimuat
-            this.Load += (s, e) => LoadData();
+            // Inisialisasi Service menggunakan AppDbContext
+            var context = new AppDbContext();
+            _penumpangService = new PenumpangService(context);
 
-            // Hubungkan semua event (Sudah benar)
+            this.Load += new System.EventHandler(this.InputPenumpangForm_Load);
             this.btnSimpan.Click += new System.EventHandler(this.btnSimpan_Click);
             this.btnEdit.Click += new System.EventHandler(this.btnEdit_Click);
             this.btnHapus.Click += new System.EventHandler(this.btnHapus_Click);
             this.btnKeluar.Click += new System.EventHandler(this.btnKeluar_Click);
-
-            // ASUMSI: DataGridView Anda bernama dgvDataPenumpang
             this.dgvDataPenumpang.CellClick += new System.Windows.Forms.DataGridViewCellEventHandler(this.dgvDataPenumpang_CellClick);
-        }
 
-        private void LoadData()
-        {
-            // Panggil Service (Memastikan menggunakan GetSemuaPenumpang() yang sudah dikoreksi)
-            dgvDataPenumpang.DataSource = service.GetSemuaPenumpang();
-
-            // Pengaturan DataGridView
-            if (dgvDataPenumpang.Columns.Contains("PenumpangID"))
-            {
-                dgvDataPenumpang.Columns["PenumpangID"].Visible = false;
-            }
-            if (dgvDataPenumpang.Columns.Contains("NomorHP"))
-            {
-                dgvDataPenumpang.Columns["NomorHP"].HeaderText = "Nomor HP";
-            }
-            if (dgvDataPenumpang.Columns.Contains("Nama"))
-            {
-                dgvDataPenumpang.Columns["Nama"].AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill;
-            }
-
+            // Set default
             ClearForm();
-            btnEdit.Enabled = false; // Nonaktifkan Edit/Hapus saat awal load
+            btnEdit.Enabled = false;
             btnHapus.Enabled = false;
         }
 
         private void ClearForm()
         {
-            txtNama.Clear();
-            txtNomorHp.Clear();
-            txtEmail.Clear();
-            selectedPenumpangId = 0;
-            btnSimpan.Enabled = true;
+            IDPenumpangDipilih = 0;
+            txtNama.Text = string.Empty;
+            txtNomorHp.Text = string.Empty;
+            txtEmail.Text = string.Empty;
+            btnSimpan.Text = "Simpan";
             btnEdit.Enabled = false;
             btnHapus.Enabled = false;
+            txtNama.Focus();
         }
 
-        // PERBAIKAN: Menambahkan '?' pada object sender
+        private void LoadDataPenumpang()
+        {
+            dgvDataPenumpang.DataSource = _penumpangService.GetSemuaPenumpang();
+
+            // Format DataGridView
+            if (dgvDataPenumpang.Columns.Count > 0)
+            {
+                // Kolom ID Generik (Primary Key EF Core)
+                if (dgvDataPenumpang.Columns.Contains("ID"))
+                {
+                    dgvDataPenumpang.Columns["ID"].Visible = true;
+                    dgvDataPenumpang.Columns["ID"].HeaderText = "PK ID";
+                    dgvDataPenumpang.Columns["ID"].Width = 50;
+                }
+
+                // Sembunyikan kolom navigasi
+                if (dgvDataPenumpang.Columns.Contains("Pemesanan")) dgvDataPenumpang.Columns["Pemesanan"].Visible = false;
+            }
+            ClearForm();
+        }
+
+        private void InputPenumpangForm_Load(object? sender, EventArgs e)
+        {
+            LoadDataPenumpang();
+        }
+
         private void dgvDataPenumpang_CellClick(object? sender, DataGridViewCellEventArgs e)
         {
-            if (e.RowIndex >= 0 && e.RowIndex < dgvDataPenumpang.Rows.Count - 1) // Tambah cek agar tidak klik baris kosong
+            if (e.RowIndex >= 0 && dgvDataPenumpang.Rows.Count > 0)
             {
-                DataGridViewRow row = this.dgvDataPenumpang.Rows[e.RowIndex];
+                // Ambil ID Generik (Primary Key) dari DGV
+                if (dgvDataPenumpang.Rows[e.RowIndex].Cells["ID"].Value is int penumpangID)
+                {
+                    IDPenumpangDipilih = penumpangID;
+                    btnSimpan.Text = "Baru";
+                    btnEdit.Enabled = true;
+                    btnHapus.Enabled = true;
 
-                // Pengecekan DBNull untuk Email
-                object emailValue = row.Cells["Email"].Value;
-                string emailText = (emailValue == null || emailValue == DBNull.Value) ? string.Empty : emailValue.ToString();
-
-                selectedPenumpangId = (int)row.Cells["PenumpangID"].Value;
-                txtNama.Text = row.Cells["Nama"].Value.ToString();
-                txtNomorHp.Text = row.Cells["NomorHP"].Value.ToString();
-                txtEmail.Text = emailText; // Gunakan hasil pengecekan DBNull
-
-                btnSimpan.Enabled = false; // Nonaktifkan simpan
-                btnEdit.Enabled = true;   // Aktifkan edit
-                btnHapus.Enabled = true;  // Aktifkan hapus
+                    txtNama.Text = dgvDataPenumpang.Rows[e.RowIndex].Cells["Nama"].Value.ToString();
+                    txtNomorHp.Text = dgvDataPenumpang.Rows[e.RowIndex].Cells["NomorHP"].Value.ToString();
+                    txtEmail.Text = dgvDataPenumpang.Rows[e.RowIndex].Cells["Email"].Value.ToString();
+                }
             }
         }
 
-        private void btnSimpan_Click(object? sender, EventArgs e)
+        private async void btnSimpan_Click(object? sender, EventArgs e)
         {
-            // KOREKSI VALIDASI: Nama dan Nomor HP WAJIB diisi
-            if (string.IsNullOrWhiteSpace(txtNama.Text) || string.IsNullOrWhiteSpace(txtNomorHp.Text))
+            if (IDPenumpangDipilih != 0)
             {
-                MessageBox.Show("Nama dan Nomor HP wajib diisi.", "Validasi Input", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                ClearForm();
                 return;
             }
 
-            // Mengganti string kosong menjadi null jika kolom di DB mengizinkan NULL
-            string email = string.IsNullOrWhiteSpace(txtEmail.Text) ? null : txtEmail.Text;
+            if (!ValidasiInput()) return;
 
-            var newPenumpang = new PenumpangModel
-            {
-                Nama = txtNama.Text,
-                NomorHP = txtNomorHp.Text,
-                Email = email
-            };
+            var newPenumpang = CreatePenumpangModel();
 
-            if (service.SimpanPenumpang(newPenumpang))
+            try
             {
+                // Panggil method asinkron
+                await _penumpangService.InsertPenumpang(newPenumpang);
                 MessageBox.Show("Data Penumpang berhasil disimpan!", "Sukses", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                LoadData();
+                LoadDataPenumpang();
             }
-            else
+            catch (Exception ex)
             {
-                MessageBox.Show("Gagal menyimpan data penumpang. Cek koneksi atau kemungkinan Nomor HP sudah terdaftar.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show($"Gagal menyimpan data. Pastikan Nomor HP unik. Error: {ex.Message}", "Error DB", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 
-        private void btnEdit_Click(object? sender, EventArgs e)
+        private async void btnEdit_Click(object? sender, EventArgs e)
         {
-            if (selectedPenumpangId == 0) return;
+            if (IDPenumpangDipilih == 0) return;
 
-            // KOREKSI VALIDASI: Nama dan Nomor HP WAJIB diisi
+            if (!ValidasiInput()) return;
+
+            var updatedPenumpang = CreatePenumpangModel();
+            updatedPenumpang.ID = IDPenumpangDipilih;
+
+            try
+            {
+                // Panggil method asinkron
+                await _penumpangService.UpdatePenumpang(updatedPenumpang);
+                MessageBox.Show("Data Penumpang berhasil diubah!", "Sukses", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                LoadDataPenumpang();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Gagal mengubah data. Pastikan Nomor HP unik. Error: {ex.Message}", "Error DB", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private async void btnHapus_Click(object? sender, EventArgs e)
+        {
+            if (IDPenumpangDipilih == 0) return;
+
+            if (MessageBox.Show("Apakah Anda yakin ingin menghapus data Penumpang ini?", "Konfirmasi Hapus", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes)
+            {
+                try
+                {
+                    // Panggil method asinkron
+                    await _penumpangService.DeletePenumpang(IDPenumpangDipilih);
+                    MessageBox.Show("Data Penumpang berhasil dihapus!", "Sukses", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    LoadDataPenumpang();
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"Gagal menghapus data. Penumpang ini mungkin sudah digunakan dalam transaksi. Error: {ex.Message}", "Error DB", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            }
+        }
+
+        private bool ValidasiInput()
+        {
             if (string.IsNullOrWhiteSpace(txtNama.Text) || string.IsNullOrWhiteSpace(txtNomorHp.Text))
             {
-                MessageBox.Show("Nama dan Nomor HP wajib diisi.", "Validasi Input", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
+                MessageBox.Show("Nama dan Nomor HP harus diisi.", "Validasi", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return false;
             }
-
-            // Mengganti string kosong menjadi null
-            string email = string.IsNullOrWhiteSpace(txtEmail.Text) ? null : txtEmail.Text;
-
-            var updatedPenumpang = new PenumpangModel
-            {
-                PenumpangID = selectedPenumpangId,
-                Nama = txtNama.Text,
-                NomorHP = txtNomorHp.Text,
-                Email = email
-            };
-
-            if (service.UpdatePenumpang(updatedPenumpang))
-            {
-                MessageBox.Show("Data Penumpang berhasil diubah!", "Sukses", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                LoadData();
-            }
-            else
-            {
-                MessageBox.Show("Gagal mengubah data penumpang. Cek koneksi atau kemungkinan Nomor HP sudah terdaftar.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
+            return true;
         }
 
-        private void btnHapus_Click(object? sender, EventArgs e)
+        private PenumpangModel CreatePenumpangModel()
         {
-            if (selectedPenumpangId == 0) return;
-
-            DialogResult result = MessageBox.Show($"Yakin ingin menghapus data penumpang '{txtNama.Text}'?",
-                                                "Konfirmasi Hapus",
-                                                MessageBoxButtons.YesNo,
-                                                MessageBoxIcon.Question);
-
-            if (result == DialogResult.Yes)
+            return new PenumpangModel
             {
-                if (service.HapusPenumpang(selectedPenumpangId))
-                {
-                    MessageBox.Show("Data Penumpang berhasil dihapus!", "Sukses", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                    LoadData();
-                }
-                else
-                {
-                    // Penumpang mungkin memiliki Pemesanan yang terkait
-                    MessageBox.Show("Gagal menghapus data. Penumpang mungkin memiliki riwayat pemesanan.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                }
-            }
+                Nama = txtNama.Text,
+                NomorHP = txtNomorHp.Text,
+                Email = txtEmail.Text
+            };
         }
 
         private void btnKeluar_Click(object? sender, EventArgs e)
         {
             this.Close();
-        }
-
-        private void InputPenumpangForm_Load(object sender, EventArgs e)
-        {
-            // Tidak perlu ada kode di sini, semua logic sudah di constructor dan LoadData
         }
     }
 }

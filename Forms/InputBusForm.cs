@@ -1,180 +1,224 @@
 ﻿// FILE: Forms/InputBusForm.cs
 
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Windows.Forms;
 using AplikasiPemesananBus_UAS.Models;
-using AplikasiPemesananBus_UAS.Services;
-using System.Globalization; // Tambahkan ini untuk penanganan format desimal
+using AplikasiPemesananBus_UAS.ServiceOrm;
+using AplikasiPemesananBus_UAS.Data;
+using System.Globalization;
+using System.Threading.Tasks;
 
 namespace AplikasiPemesananBus_UAS.Forms
 {
     public partial class InputBusForm : Form
     {
-        private BusService service = new BusService();
-        private int selectedBusId = 0;
+        private int IDBusDipilih = 0;
+        private readonly BusService _busService;
 
         public InputBusForm()
         {
             InitializeComponent();
 
-            // Panggil LoadData saat form pertama kali dimuat
-            this.Load += (s, e) => LoadData();
+            // Inisialisasi Service menggunakan AppDbContext
+            var context = new AppDbContext();
+            _busService = new BusService(context);
 
-            // Event Handlers sudah benar
+            // --- Event Handlers (Pastikan Sesuai dengan Designer.cs) ---
+            this.Load += new System.EventHandler(this.InputBusForm_Load);
+
+            // Menggunakan event click yang sudah didefinisikan di Designer
             this.btnSimpan.Click += new System.EventHandler(this.btnSimpan_Click);
             this.btnEdit.Click += new System.EventHandler(this.btnEdit_Click);
+        
             this.btnKeluar.Click += new System.EventHandler(this.btnKeluar_Click);
+
             this.dgvDataBus.CellClick += new System.Windows.Forms.DataGridViewCellEventHandler(this.dgvDataBus_CellClick);
-        }
-
-        // KOREKSI: Panggil LoadData secara terpisah dari event Load form
-        private void InputBusForm_Load(object sender, EventArgs e)
-        {
-            // Tidak perlu memanggil LoadData di sini lagi karena sudah dipanggil di constructor
-        }
-
-        private void LoadData()
-        {
-            // Panggil Service yang sudah dikoreksi
-            dgvDataBus.DataSource = service.GetSemuaBus();
-
-            // Pengaturan DataGridView agar terlihat rapi dan data ID tersembunyi
-            if (dgvDataBus.Columns.Contains("BusID"))
-            {
-                dgvDataBus.Columns["BusID"].Visible = false;
-            }
-            // Format TarifBase sebagai mata uang
-            if (dgvDataBus.Columns.Contains("TarifBase"))
-            {
-                dgvDataBus.Columns["TarifBase"].DefaultCellStyle.Format = "N2";
-                dgvDataBus.Columns["TarifBase"].DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleRight;
-            }
 
             ClearForm();
+            btnEdit.Enabled = false;
+           
         }
 
         private void ClearForm()
         {
-            txtNamaBus.Clear();
-            txtNomorPlat.Clear();
-            txtKapasitas.Clear();
-            txtTarifDasar.Clear();
-            selectedBusId = 0;
-            btnSimpan.Enabled = true; // Jika mode simpan
-            btnEdit.Enabled = false;  // Nonaktifkan edit saat clear
+            IDBusDipilih = 0;
+            txtNamaBus.Text = string.Empty;
+            txtNomorPlat.Text = string.Empty;
+            txtKapasitas.Text = "0";
+            txtTarifDasar.Text = "0";
+            btnSimpan.Text = "Simpan";
+            btnEdit.Enabled = false;
+          
+            txtNamaBus.Focus();
+        }
+
+        private void LoadDataBus()
+        {
+            dgvDataBus.DataSource = _busService.GetSemuaBus();
+
+            if (dgvDataBus.Columns.Count > 0)
+            {
+                if (dgvDataBus.Columns.Contains("ID"))
+                {
+                    dgvDataBus.Columns["ID"].Visible = true;
+                    dgvDataBus.Columns["ID"].HeaderText = "PK ID";
+                    dgvDataBus.Columns["ID"].Width = 50;
+                }
+
+                if (dgvDataBus.Columns.Contains("Pemesanan")) dgvDataBus.Columns["Pemesanan"].Visible = false;
+
+                if (dgvDataBus.Columns.Contains("TarifBase"))
+                {
+                    dgvDataBus.Columns["TarifBase"].HeaderText = "Tarif Dasar";
+                    dgvDataBus.Columns["TarifBase"].DefaultCellStyle.Format = "N0";
+                    dgvDataBus.Columns["TarifBase"].DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleRight;
+                }
+
+                dgvDataBus.AutoResizeColumns(DataGridViewAutoSizeColumnsMode.AllCells);
+            }
+            ClearForm();
+        }
+
+        private void InputBusForm_Load(object? sender, EventArgs e)
+        {
+            LoadDataBus();
         }
 
         private void dgvDataBus_CellClick(object? sender, DataGridViewCellEventArgs e)
         {
-            if (e.RowIndex >= 0)
+            if (e.RowIndex >= 0 && dgvDataBus.Rows.Count > 0)
             {
-                DataGridViewRow row = this.dgvDataBus.Rows[e.RowIndex];
-
-                // Pastikan nama kolom sesuai dengan nama properti di BusModel (yang Anda kirim)
-                selectedBusId = (int)row.Cells["BusID"].Value;
-                txtNamaBus.Text = row.Cells["NamaBus"].Value.ToString();
-                txtNomorPlat.Text = row.Cells["NomorPlat"].Value.ToString();
-                txtKapasitas.Text = row.Cells["Kapasitas"].Value.ToString();
-
-                // KOREKSI: Ambil TarifBase sebagai Decimal/string, lalu format kembali (optional)
-                // Kita asumsikan TarifBase di model adalah decimal
-                if (row.Cells["TarifBase"].Value != null)
+                if (dgvDataBus.Rows[e.RowIndex].Cells["ID"].Value is int busID)
                 {
-                    // Gunakan ToString("N0") untuk menampilkan angka tanpa desimal (misal: 150000)
-                    txtTarifDasar.Text = ((decimal)row.Cells["TarifBase"].Value).ToString("N0", CultureInfo.InvariantCulture);
+                    IDBusDipilih = busID;
+                    btnSimpan.Text = "Baru";
+                    btnEdit.Enabled = true;
+                  
+
+                    txtNamaBus.Text = dgvDataBus.Rows[e.RowIndex].Cells["NamaBus"].Value.ToString();
+                    txtNomorPlat.Text = dgvDataBus.Rows[e.RowIndex].Cells["NomorPlat"].Value.ToString();
+
+                    if (dgvDataBus.Rows[e.RowIndex].Cells["Kapasitas"].Value is int kapasitas)
+                    {
+                        txtKapasitas.Text = kapasitas.ToString();
+                    }
+
+                    if (dgvDataBus.Rows[e.RowIndex].Cells["TarifBase"].Value is decimal tarif)
+                    {
+                        // Format ke string N0 lalu hapus separator ribuan default ('-') jika ada
+                        string tarifText = tarif.ToString("N0", CultureInfo.InvariantCulture).Replace(CultureInfo.CurrentCulture.NumberFormat.NumberGroupSeparator, "");
+                        txtTarifDasar.Text = tarifText;
+                    }
                 }
-
-                btnSimpan.Enabled = false; // Nonaktifkan simpan saat memilih data
-                btnEdit.Enabled = true;   // Aktifkan edit
             }
         }
 
-        private void btnSimpan_Click(object? sender, EventArgs e)
+        private async void btnSimpan_Click(object? sender, EventArgs e)
         {
-            // KOREKSI: Gunakan NumberStyles.Any dan CultureInfo.InvariantCulture agar bisa menerima input "150.000" atau "150000"
-            if (string.IsNullOrWhiteSpace(txtNamaBus.Text) ||
-                string.IsNullOrWhiteSpace(txtNomorPlat.Text) ||
-                !int.TryParse(txtKapasitas.Text, out int kapasitas) ||
-                !decimal.TryParse(txtTarifDasar.Text.Replace(".", ","), NumberStyles.Any, CultureInfo.InvariantCulture, out decimal tarifDasar))
+            if (IDBusDipilih != 0)
             {
-                MessageBox.Show("Mohon isi semua data (Nama Bus, Nomor Plat, Kapasitas (angka), dan Tarif Dasar (angka)) dengan benar.", "Validasi Input", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
-            }
-            if (kapasitas <= 0 || tarifDasar <= 0)
-            {
-                MessageBox.Show("Kapasitas dan Tarif Dasar harus lebih besar dari nol.", "Validasi Input", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                ClearForm();
                 return;
             }
 
+            if (!ValidasiInput()) return;
 
-            var newBus = new BusModel
-            {
-                NamaBus = txtNamaBus.Text,
-                NomorPlat = txtNomorPlat.Text,
-                Kapasitas = kapasitas,
-                TarifBase = tarifDasar
-            };
+            var newBus = CreateBusModel();
 
-            if (service.SimpanBus(newBus))
+            try
             {
+                await _busService.InsertBus(newBus);
                 MessageBox.Show("Data Bus berhasil disimpan!", "Sukses", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                LoadData();
+                LoadDataBus();
             }
-            else
+            catch (Exception ex)
             {
-                // Tampilkan pesan error jika SimpanBus mengembalikan false (biasanya karena NomorPlat duplikat)
-                MessageBox.Show("Gagal menyimpan data bus. Kemungkinan Nomor Plat sudah terdaftar.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show($"Gagal menyimpan data. Pastikan Nomor Plat Bus unik. Error: {ex.Message}", "Error DB", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 
-        private void btnEdit_Click(object? sender, EventArgs e)
+        private async void btnEdit_Click(object? sender, EventArgs e)
         {
-            if (selectedBusId == 0) return;
+            if (IDBusDipilih == 0) return;
 
-            // KOREKSI: Tambahkan validasi yang sama seperti Simpan
-            if (string.IsNullOrWhiteSpace(txtNamaBus.Text) ||
-                string.IsNullOrWhiteSpace(txtNomorPlat.Text) ||
-                !int.TryParse(txtKapasitas.Text, out int kapasitas) ||
-                !decimal.TryParse(txtTarifDasar.Text.Replace(".", ","), NumberStyles.Any, CultureInfo.InvariantCulture, out decimal tarifDasar))
+            if (!ValidasiInput()) return;
+
+            var updatedBus = CreateBusModel();
+            updatedBus.ID = IDBusDipilih;
+
+            try
             {
-                MessageBox.Show("Mohon isi semua data dengan format yang benar.", "Validasi Input", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
+                await _busService.UpdateBus(updatedBus);
+                MessageBox.Show("Data Bus berhasil diubah!", "Sukses", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                LoadDataBus();
             }
-            if (kapasitas <= 0 || tarifDasar <= 0)
+            catch (Exception ex)
             {
-                MessageBox.Show("Kapasitas dan Tarif Dasar harus lebih besar dari nol.", "Validasi Input", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
+                MessageBox.Show($"Gagal mengubah data. Pastikan Nomor Plat Bus unik. Error: {ex.Message}", "Error DB", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private async void btnHapus_Click(object? sender, EventArgs e)
+        {
+            if (IDBusDipilih == 0) return;
+
+            if (MessageBox.Show("Apakah Anda yakin ingin menghapus data Bus ini?", "Konfirmasi Hapus", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes)
+            {
+                try
+                {
+                    await _busService.DeleteBus(IDBusDipilih);
+                    MessageBox.Show("Data Bus berhasil dihapus!", "Sukses", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    LoadDataBus();
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"Gagal menghapus data. Bus ini mungkin sudah digunakan dalam transaksi. Error: {ex.Message}", "Error DB", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            }
+        }
+
+        private bool ValidasiInput()
+        {
+            if (string.IsNullOrWhiteSpace(txtNamaBus.Text) || string.IsNullOrWhiteSpace(txtNomorPlat.Text))
+            {
+                MessageBox.Show("Nama Bus dan Nomor Plat harus diisi.", "Validasi", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return false;
             }
 
-            var updatedBus = new BusModel
+            if (!int.TryParse(txtKapasitas.Text, out int kapasitas) || kapasitas <= 0)
             {
-                BusID = selectedBusId,
+                MessageBox.Show("Kapasitas harus berupa angka positif.", "Validasi", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return false;
+            }
+
+            decimal.TryParse(txtTarifDasar.Text.Replace(".", ""), NumberStyles.Any, CultureInfo.InvariantCulture, out decimal tarifDasar);
+            if (tarifDasar <= 0)
+            {
+                MessageBox.Show("Tarif Dasar harus lebih besar dari Rp. 0.", "Validasi", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return false;
+            }
+            return true;
+        }
+
+        private BusModel CreateBusModel()
+        {
+            int.TryParse(txtKapasitas.Text, out int kapasitas);
+            decimal.TryParse(txtTarifDasar.Text.Replace(".", ""), NumberStyles.Any, CultureInfo.InvariantCulture, out decimal tarifDasar);
+
+            return new BusModel
+            {
                 NamaBus = txtNamaBus.Text,
                 NomorPlat = txtNomorPlat.Text,
                 Kapasitas = kapasitas,
                 TarifBase = tarifDasar
             };
-
-            if (service.UpdateBus(updatedBus))
-            {
-                MessageBox.Show("Data Bus berhasil diubah!", "Sukses", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                LoadData();
-            }
-            else
-            {
-                // Tampilkan pesan error jika UpdateBus mengembalikan false
-                MessageBox.Show("Gagal mengubah data bus. Cek koneksi atau Nomor Plat mungkin duplikat.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
         }
 
         private void btnKeluar_Click(object? sender, EventArgs e)
         {
             this.Close();
-        }
-
-        private void btnSimpan_Click_1(object sender, EventArgs e)
-        {
-
         }
     }
 }

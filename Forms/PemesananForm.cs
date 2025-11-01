@@ -1,108 +1,147 @@
-﻿// FILE: Forms/PemesananForm.cs (Koreksi Lengkap)
+﻿// FILE: Forms/PemesananForm.cs (REVISI FINAL)
 
 using System;
 using System.Collections.Generic;
 using System.Windows.Forms;
 using AplikasiPemesananBus_UAS.Models;
-using AplikasiPemesananBus_UAS.Services;
+using AplikasiPemesananBus_UAS.ServiceOrm;
+using AplikasiPemesananBus_UAS.Data;
 using System.Linq;
-using System.Globalization; // Tambahkan ini untuk penanganan format desimal
+using System.Globalization;
+using System.Threading.Tasks;
 
 namespace AplikasiPemesananBus_UAS.Forms
 {
     public partial class PemesananForm : Form
     {
-        private PenumpangService penumpangService = new PenumpangService();
-        private BusService busService = new BusService();
-        private PemesananService pemesananService = new PemesananService();
+        // Deklarasi Service ORM
+        private readonly PenumpangService _penumpangService;
+        private readonly BusService _busService;
+        private readonly PemesananService _pemesananService;
 
-        // Menyimpan list Bus yang diambil dari DB
-        private List<BusModel> listBus = new List<BusModel>();
+        // List model untuk DataBinding
+        // private List<BusModel> _listBus = new List<BusModel>(); // Tidak perlu jika menggunakan GetDropdown
+        // private List<PenumpangModel> _listPenumpang = new List<PenumpangModel>(); // Tidak perlu jika menggunakan GetDropdown
+
+        // Asumsi properti lain yang mungkin Anda miliki, misalnya:
+        // private int IDPemesananDipilih = 0; 
 
         public PemesananForm()
         {
             InitializeComponent();
+
+            // INISIALISASI SERVICE EF CORE
+            var context = new AppDbContext();
+            _penumpangService = new PenumpangService(context);
+            _busService = new BusService(context);
+            _pemesananService = new PemesananService(context);
+
             this.Load += new System.EventHandler(this.PemesananForm_Load);
 
-            // Hubungkan semua event (Sudah benar)
+            // Event Handler Sesuai Code Lama Anda
             this.btnSubmit.Click += new System.EventHandler(this.btnSubmit_Click);
             this.btnKeluar.Click += new System.EventHandler(this.btnKeluar_Click);
             this.cmbBus.SelectedIndexChanged += new System.EventHandler(this.cmbBus_SelectedIndexChanged);
-
-            // KOREKSI: Gunakan event TextChanged untuk kalkulasi
             this.txtJumlahTiket.TextChanged += new System.EventHandler(this.KalkulasiTotalTarif);
-            this.txtRetribusi.TextChanged += new System.EventHandler(this.KalkulasiTotalTarif);
+            this.txtRetribusi.TextChanged += new System.EventHandler(this.KalkulasiTotalTarif); // Asumsi ini ada
 
-            // Memastikan input retribusi hanya angka (opsional: tambahkan event KeyPress)
             txtTarif.ReadOnly = true;
             txtTotalTarif.ReadOnly = true;
 
-            ClearForm(); // Panggil ClearForm di awal
+            ClearForm();
         }
 
         private void ClearForm()
         {
-            // Atur ulang semua komponen input
             cmbPenumpang.SelectedIndex = -1;
             cmbBus.SelectedIndex = -1;
-            txtJumlahTiket.Text = "1"; // Default 1 tiket
+            txtJumlahTiket.Text = "1";
             txtRetribusi.Text = "0";
             txtTarif.Text = "0";
             txtTotalTarif.Text = "0";
-        }
 
+            // IDPemesananDipilih = 0; 
+        }
+
+        // PENTING: Dibuat synchronous (tanpa async/await) untuk mengatasi Error CS1061 di Load
         private void LoadComboBoxData()
         {
-            // 1. Ambil Data Bus
-            listBus = busService.GetSemuaBus();
-
-            // 2. Binding Penumpang
-            var listPenumpang = penumpangService.GetSemuaPenumpang();
-            cmbPenumpang.DataSource = listPenumpang;
-            cmbPenumpang.DisplayMember = "Nama";
-            cmbPenumpang.ValueMember = "PenumpangID";
-
-            // 3. Binding Bus
-            cmbBus.DataSource = listBus;
-            cmbBus.DisplayMember = "NamaBus";
-            cmbBus.ValueMember = "BusID";
-
-            // KOREKSI: Tambahkan pengecekan data
-            if (listPenumpang.Count == 0 || listBus.Count == 0)
+            try
             {
-                MessageBox.Show("Data Bus atau Penumpang Kosong. Mohon input data master terlebih dahulu.", "Data Master Kosong", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                // Asumsi GetDropdown adalah synchronous (List<T>)
+                cmbPenumpang.DataSource = _penumpangService.GetDropdown();
+                cmbPenumpang.DisplayMember = "DisplayName";
+                cmbPenumpang.ValueMember = "ID";
+
+                // Asumsi GetDropdown adalah synchronous (List<T>)
+                cmbBus.DataSource = _busService.GetDropdown();
+                cmbBus.DisplayMember = "DisplayName";
+                cmbBus.ValueMember = "ID";
+
+                if (cmbPenumpang.Items.Count == 0 || cmbBus.Items.Count == 0)
+                {
+                    MessageBox.Show("Data Bus atau Penumpang Kosong. Mohon input data master terlebih dahulu.", "Data Master Kosong", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    btnSubmit.Enabled = false;
+                }
+                else
+                {
+                    btnSubmit.Enabled = true;
+                }
+
+                cmbPenumpang.SelectedIndex = -1;
+                cmbBus.SelectedIndex = -1;
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Gagal memuat data ComboBox: {ex.Message}", "Error Data", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 btnSubmit.Enabled = false;
             }
-            else
-            {
-                btnSubmit.Enabled = true;
-            }
-
-            cmbPenumpang.SelectedIndex = -1;
-            cmbBus.SelectedIndex = -1;
         }
 
         private void LoadDataTransaksi()
         {
-            dgvDataTransaksi.DataSource = pemesananService.GetSemuaPemesanan();
+            // PENTING: Menggunakan GetSemuaPemesanan() yang sudah diperbarui di Service (synchronous)
+            dgvDataTransaksi.DataSource = _pemesananService.GetSemuaPemesanan();
 
-            // Pengaturan DataGridView Transaksi
-            if (dgvDataTransaksi.Columns.Contains("PemesananID"))
+            // KOREKSI PENGATURAN KOLOM DGV (code Anda)
+            if (dgvDataTransaksi.Columns.Count > 0)
             {
-                dgvDataTransaksi.Columns["PemesananID"].Visible = false;
+                // Sembunyikan kolom yang tidak perlu
+                foreach (DataGridViewColumn col in dgvDataTransaksi.Columns)
+                {
+                    col.Visible = false;
+                }
+
+                // Tampilkan dan Atur Kolom (sesuai code Anda)
+                if (dgvDataTransaksi.Columns.Contains("ID"))
+                {
+                    dgvDataTransaksi.Columns["ID"].Visible = true;
+                    dgvDataTransaksi.Columns["ID"].HeaderText = "PK ID";
+                    dgvDataTransaksi.Columns["ID"].Width = 50;
+                }
+
+                if (dgvDataTransaksi.Columns.Contains("NamaBus")) dgvDataTransaksi.Columns["NamaBus"].Visible = true;
+                if (dgvDataTransaksi.Columns.Contains("NamaBus")) dgvDataTransaksi.Columns["NamaBus"].HeaderText = "Nama Bus";
+
+                if (dgvDataTransaksi.Columns.Contains("NamaPenumpang")) dgvDataTransaksi.Columns["NamaPenumpang"].Visible = true;
+                if (dgvDataTransaksi.Columns.Contains("NamaPenumpang")) dgvDataTransaksi.Columns["NamaPenumpang"].HeaderText = "Penumpang";
+
+                if (dgvDataTransaksi.Columns.Contains("TanggalPemesanan")) dgvDataTransaksi.Columns["TanggalPemesanan"].Visible = true;
+                if (dgvDataTransaksi.Columns.Contains("TanggalPemesanan")) dgvDataTransaksi.Columns["TanggalPemesanan"].HeaderText = "Tanggal";
+
+                if (dgvDataTransaksi.Columns.Contains("JumlahTiket")) dgvDataTransaksi.Columns["JumlahTiket"].Visible = true;
+                if (dgvDataTransaksi.Columns.Contains("JumlahTiket")) dgvDataTransaksi.Columns["JumlahTiket"].HeaderText = "Jml Tiket";
+
+                if (dgvDataTransaksi.Columns.Contains("TotalBayar"))
+                {
+                    dgvDataTransaksi.Columns["TotalBayar"].Visible = true;
+                    dgvDataTransaksi.Columns["TotalBayar"].HeaderText = "Total Bayar";
+                    dgvDataTransaksi.Columns["TotalBayar"].DefaultCellStyle.Format = "N0";
+                    dgvDataTransaksi.Columns["TotalBayar"].DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleRight;
+                }
+
+                dgvDataTransaksi.AutoResizeColumns(DataGridViewAutoSizeColumnsMode.AllCells);
             }
-            if (dgvDataTransaksi.Columns.Contains("BusID"))
-            {
-                dgvDataTransaksi.Columns["BusID"].Visible = false;
-            }
-            if (dgvDataTransaksi.Columns.Contains("PenumpangID"))
-            {
-                dgvDataTransaksi.Columns["PenumpangID"].Visible = false;
-            }
-            // Tampilkan Nama Bus dan Nama Penumpang (dari JOIN di Service)
-            dgvDataTransaksi.Columns["NamaBus"].HeaderText = "Nama Bus";
-            dgvDataTransaksi.Columns["NamaPenumpang"].HeaderText = "Penumpang";
-            dgvDataTransaksi.Columns["TotalBayar"].DefaultCellStyle.Format = "N0";
         }
 
         private void PemesananForm_Load(object? sender, EventArgs e)
@@ -113,12 +152,31 @@ namespace AplikasiPemesananBus_UAS.Forms
 
         private void cmbBus_SelectedIndexChanged(object? sender, EventArgs e)
         {
-            // KOREKSI: Gunakan SelectedItem dan pengecekan null yang lebih aman
-            if (cmbBus.SelectedItem is BusModel selectedBus)
+            // Pastikan SelectedValue adalah int (ID Generik)
+            if (cmbBus.SelectedValue != null && cmbBus.SelectedValue is int busID)
             {
-                // Tampilkan tarif dasar, gunakan format N0 untuk menghilangkan desimal
-                txtTarif.Text = selectedBus.TarifBase.ToString("N0", CultureInfo.InvariantCulture);
-                KalkulasiTotalTarif(null, null);
+                try
+                {
+                    // Panggilan FindByID (Asumsi synchronous)
+                    var selectedBus = _busService.FindByID(busID);
+
+                    if (selectedBus != null)
+                    {
+                        // PENTING: Menggunakan TarifBase
+                        txtTarif.Text = selectedBus.TarifBase.ToString("N0", CultureInfo.InvariantCulture);
+                        KalkulasiTotalTarif(null, null);
+                    }
+                    else
+                    {
+                        txtTarif.Text = "0";
+                        KalkulasiTotalTarif(null, null);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"Error mencari data Bus: {ex.Message}", "Error DB", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    txtTarif.Text = "0";
+                }
             }
             else
             {
@@ -127,14 +185,11 @@ namespace AplikasiPemesananBus_UAS.Forms
             }
         }
 
-        // KOREKSI: Fungsi KalkulasiTotalTarif yang lebih robust
         private void KalkulasiTotalTarif(object? sender, EventArgs? e)
         {
-            // Menggunakan fungsi TryParse dengan CultureInfo yang aman
             decimal.TryParse(txtTarif.Text.Replace(".", ""), NumberStyles.Any, CultureInfo.InvariantCulture, out decimal tarifDasar);
             decimal.TryParse(txtRetribusi.Text.Replace(".", ""), NumberStyles.Any, CultureInfo.InvariantCulture, out decimal retribusi);
 
-            // Pastikan Jumlah Tiket adalah integer yang valid dan > 0
             if (!int.TryParse(txtJumlahTiket.Text, out int jumlahTiket) || jumlahTiket <= 0)
             {
                 jumlahTiket = 0;
@@ -142,49 +197,63 @@ namespace AplikasiPemesananBus_UAS.Forms
 
             decimal totalBayar = (tarifDasar * jumlahTiket) + retribusi;
 
-            // Tampilkan hasil total bayar dengan format N0
             txtTotalTarif.Text = totalBayar.ToString("N0", CultureInfo.InvariantCulture);
         }
 
-        private void btnSubmit_Click(object? sender, EventArgs e)
+        private async void btnSubmit_Click(object? sender, EventArgs e)
         {
-            // Validasi umum
             if (cmbPenumpang.SelectedValue == null || cmbBus.SelectedValue == null ||
-                !int.TryParse(txtJumlahTiket.Text, out int jumlahTiket) || jumlahTiket <= 0)
+             !int.TryParse(txtJumlahTiket.Text, out int jumlahTiket) || jumlahTiket <= 0)
             {
                 MessageBox.Show("Mohon lengkapi data Penumpang, Bus, dan Jumlah Tiket (minimal 1).", "Validasi", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
 
-            // Validasi dan Parsing nilai dari TextBox (sudah dilakukan di Kalkulasi, tinggal TryParse lagi)
-            decimal.TryParse(txtTarif.Text.Replace(".", ""), NumberStyles.Any, CultureInfo.InvariantCulture, out decimal tarifDasar);
-            decimal.TryParse(txtRetribusi.Text.Replace(".", ""), NumberStyles.Any, CultureInfo.InvariantCulture, out decimal retribusi);
             decimal.TryParse(txtTotalTarif.Text.Replace(".", ""), NumberStyles.Any, CultureInfo.InvariantCulture, out decimal totalBayar);
 
-            // Cek ketersediaan tiket (Logika opsional jika Anda memiliki pengecekan Kapasitas)
-            // ... (Cek Kapasitas di sini jika diperlukan) ...
+            int selectedBusID = (int)cmbBus.SelectedValue!;
+            int selectedPenumpangID = (int)cmbPenumpang.SelectedValue!;
+
+            var selectedBus = _busService.FindByID(selectedBusID);
+
+            if (selectedBus == null)
+            {
+                MessageBox.Show("Data Bus tidak ditemukan saat menyimpan.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
+            }
+
+            decimal.TryParse(txtRetribusi.Text.Replace(".", ""), NumberStyles.Any, CultureInfo.InvariantCulture, out decimal retribusiValue);
+
 
             var newPemesanan = new PemesananModel
             {
-                // KOREKSI: Gunakan (int?)SelectedValue?.Value ?? 0 untuk penanganan null yang lebih aman
-                PenumpangID = (int)cmbPenumpang.SelectedValue!,
-                BusID = (int)cmbBus.SelectedValue!,
-                TanggalPemesanan = DateTime.Now.Date,
+                PenumpangID = selectedPenumpangID,
+                BusID = selectedBusID,
+
+                // FIX TIME ZONE CRITICAL: Mengubah DateTime.Now (Local) ke UTC
+                TanggalPemesanan = DateTime.Now.ToUniversalTime(), // <--- PERBAIKAN UTAMA
+
                 JumlahTiket = jumlahTiket,
-                TarifDasar = tarifDasar,
-                Retribusi = retribusi,
-                TotalBayar = totalBayar
+                TotalBayar = totalBayar,
+
+                // PENTING: Menggunakan TarifBase
+                TarifDasar = selectedBus.TarifBase,
+                Retribusi = retribusiValue
             };
 
-            if (pemesananService.SimpanPemesanan(newPemesanan))
+            try
             {
+                await _pemesananService.InsertPemesanan(newPemesanan);
                 MessageBox.Show("Transaksi Pemesanan Tiket berhasil disimpan!", "Sukses", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                ClearForm(); // Bersihkan Form
+
+                ClearForm();
                 LoadDataTransaksi();
             }
-            else
+            catch (Exception ex)
             {
-                MessageBox.Show("Gagal menyimpan transaksi. Cek koneksi atau foreign key (Bus/Penumpang) yang hilang.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                string innerExceptionMessage = (ex.InnerException != null) ? ex.InnerException.Message : "Tidak ada detail inner exception.";
+
+                MessageBox.Show($"Gagal menyimpan transaksi. Error: {ex.Message}\nDetail: {innerExceptionMessage}", "Error DB", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 
