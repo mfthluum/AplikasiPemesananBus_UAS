@@ -52,6 +52,7 @@
             btnSimpan.TabIndex = 1;
             btnSimpan.Text = "Simpan";
             btnSimpan.UseVisualStyleBackColor = true;
+            btnSimpan.Click += btnSimpan_Click_1;
             // 
             // btnEdit
             // 

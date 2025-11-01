@@ -171,5 +171,10 @@ namespace AplikasiPemesananBus_UAS.Forms
         {
             this.Close();
         }
+
+        private void btnSimpan_Click_1(object sender, EventArgs e)
+        {
+
+        }
     }
 }
