@@ -4,7 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace AplikasiPemesananBus_UAS.Migration
+namespace AplikasiPemesananBus_UAS.Data
 {
     internal class AppDbContext
     {
